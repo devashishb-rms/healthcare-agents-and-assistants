@@ -16,6 +16,7 @@ log = logging.getLogger("sevadesk.agent")
 
 
 class Usage(BaseModel):
+    model: str = ""                # which model produced these tokens (for pricing in the console)
     input_tokens: int = 0
     output_tokens: int = 0
     cache_read_input_tokens: int = 0
@@ -71,7 +72,7 @@ class ClaudeAgent:
         if ctx.attachments:
             user_text += "\n\n[Attachments]\n" + "\n".join(ctx.attachments)
         messages = [*ctx.history, {"role": "user", "content": user_text}]
-        usage = Usage()
+        usage = Usage(model=self.model)
 
         def account(resp) -> None:
             u = resp.usage

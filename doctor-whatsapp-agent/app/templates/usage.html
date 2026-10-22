@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Usage & cost · SevaDesk console{% endblock %}
+{% block content %}
+<h1>LLM usage &amp; estimated cost <span class="muted">last {{ days }} days</span></h1>
+<div class="card">
+  <strong>{{ total.messages|num }}</strong> patient messages handled by the model ·
+  <strong>{{ total.calls|num }}</strong> API calls ·
+  <strong>{{ total.tokens|num }}</strong> tokens ·
+  <strong>{{ total.usd|money }}</strong> estimated
+  {% if total.assumed %}<p class="muted" style="margin:6px 0 0">* Some rows predate per-model accounting and are priced as {{ settings.agent_model }}.</p>{% endif %}
+  <p class="muted" style="margin:6px 0 0">Window: <a href="/console/usage?days=7">7 days</a> · <a href="/console/usage?days=30">30 days</a> · <a href="/console/usage?days=365">1 year</a>.
+  Source: <code>audit_log</code> rows with event <code>llm_usage</code>. WhatsApp conversation fees are not included.</p>
+</div>
+
+<h2>Per day</h2>
+<div class="card"><table>
+  <tr><th>Day (UTC)</th><th class="num">Messages</th><th class="num">Calls</th><th class="num">Tokens</th><th class="num">USD</th></tr>
+  {% for day, b in by_day %}
+  <tr><td>{{ day }}</td><td class="num">{{ b.messages|num }}</td><td class="num">{{ b.calls|num }}</td><td class="num">{{ b.tokens|num }}</td><td class="num">{{ b.usd|money }}{% if b.assumed %}*{% endif %}</td></tr>
+  {% else %}<tr><td colspan="5" class="muted">No usage recorded in this window.</td></tr>{% endfor %}
+</table></div>
+
+<h2>Per patient</h2>
+<div class="card"><table>
+  <tr><th>Patient</th><th class="num">Messages</th><th class="num">Calls</th><th class="num">Tokens</th><th class="num">USD</th></tr>
+  {% for wa_id, b in by_patient %}
+  <tr><td><a href="/console/patients/{{ wa_id }}">{{ wa_id }}</a></td><td class="num">{{ b.messages|num }}</td><td class="num">{{ b.calls|num }}</td><td class="num">{{ b.tokens|num }}</td><td class="num">{{ b.usd|money }}{% if b.assumed %}*{% endif %}</td></tr>
+  {% else %}<tr><td colspan="5" class="muted">No usage recorded in this window.</td></tr>{% endfor %}
+</table></div>
+
+<h2>Per model</h2>
+<div class="card"><table>
+  <tr><th>Model</th><th class="num">Messages</th><th class="num">Calls</th><th class="num">Tokens</th><th class="num">USD</th></tr>
+  {% for model, b in by_model %}
+  <tr><td>{{ model }}</td><td class="num">{{ b.messages|num }}</td><td class="num">{{ b.calls|num }}</td><td class="num">{{ b.tokens|num }}</td><td class="num">{{ b.usd|money }}{% if b.assumed %}*{% endif %}</td></tr>
+  {% else %}<tr><td colspan="5" class="muted">No usage recorded in this window.</td></tr>{% endfor %}
+</table></div>
+
+<h2>Price table <span class="muted">USD per million tokens, Anthropic list prices, Oct 2026 (app/pricing.py)</span></h2>
+<div class="card"><table>
+  <tr><th>Model</th><th class="num">Input</th><th class="num">Output</th><th class="num">Cache read</th><th class="num">Cache write</th></tr>
+  {% for model, p in prices.items() %}
+  <tr><td>{{ model }}</td><td class="num">{{ "%.3f"|format(p.input) }}</td><td class="num">{{ "%.2f"|format(p.output) }}</td><td class="num">{{ "%.3f"|format(p.cache_read) }}</td><td class="num">{{ "%.3f"|format(p.cache_write) }}</td></tr>
+  {% endfor %}
+</table></div>
+{% endblock %}

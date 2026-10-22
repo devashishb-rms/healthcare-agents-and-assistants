@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}{{ patient.name or patient.wa_id }} · SevaDesk console{% endblock %}
+{% block content %}
+<h1>{{ patient.name or patient.wa_id }} <span class="muted">{{ patient.wa_id }}</span></h1>
+<div class="card muted">
+  Consent: {{ "recorded " ~ (patient.consent_at|ts) if patient.consent_at else ("notice sent " ~ (patient.consent_sent_at|ts) if patient.consent_sent_at else "none") }}
+  · Opted out: {{ "YES" if patient.opted_out else "no" }}
+  · Doctor last replied: {{ patient.doctor_last_reply_at|ts or "never" }}
+  · First seen: {{ patient.created_at|ts }}
+</div>
+
+<h2>Conversation <span class="muted">({{ messages|length }} messages)</span></h2>
+<div class="card chat">
+  {% for m in messages %}
+  <div class="bubble {{ m.direction }}">{{ m.body or ("[" ~ (m.media_type or "media") ~ "]") }}
+    <span class="meta">{{ m.created_at|ts }}
+      · {{ {"in": "patient", "out": "assistant", "echo": "doctor (app)"}.get(m.direction, m.direction) }}
+      {% if m.classification %}<span class="tag {{ m.classification }}">{{ m.classification }}</span>{% endif %}
+      {% if m.action %}<span class="tag">{{ m.action }}</span>{% endif %}
+    </span>
+  </div>
+  {% else %}<span class="muted">No messages.</span>{% endfor %}
+</div>
+
+<h2>Drafts</h2>
+<div class="card">
+  <table>
+    <tr><th>#</th><th>Status</th><th>Patient text</th><th>Sent reply</th><th>Created</th><th>Decided</th></tr>
+    {% for d in drafts %}
+    <tr>
+      <td>{{ d.id }}</td><td>{{ d.status }}</td><td>{{ d.patient_text }}</td>
+      <td>{{ d.final_reply or (d.proposed_reply if d.status == "pending" else "") }}</td>
+      <td>{{ d.created_at|ts }}</td><td>{{ d.decided_at|ts }}</td>
+    </tr>
+    {% else %}<tr><td colspan="6" class="muted">No drafts for this patient.</td></tr>{% endfor %}
+  </table>
+</div>
+{% endblock %}

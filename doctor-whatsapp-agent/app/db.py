@@ -1,10 +1,10 @@
-"""SQLAlchemy models. SQLite for the pilot; switch DATABASE_URL to Postgres for production."""
+"""SQLAlchemy models. SQLite for the pilot; set DATABASE_URL=postgresql+psycopg://... for production."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import DateTime, Integer, String, Text, create_engine, select
+from sqlalchemy import DateTime, Engine, Integer, String, Text, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 
@@ -76,9 +76,24 @@ class AuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+def normalize_database_url(database_url: str) -> str:
+    """Map bare `postgres://` / `postgresql://` URLs onto the psycopg 3 driver (the only Postgres driver we ship)."""
+    for prefix in ("postgres://", "postgresql://"):
+        if database_url.startswith(prefix):
+            return "postgresql+psycopg://" + database_url[len(prefix):]
+    return database_url
+
+
+def make_engine(database_url: str) -> Engine:
+    """Build an engine without touching the database. SQLite gets thread-sharing; Postgres gets pool health checks."""
+    url = normalize_database_url(database_url)
+    if url.startswith("sqlite"):
+        return create_engine(url, connect_args={"check_same_thread": False}, future=True)
+    return create_engine(url, pool_pre_ping=True, pool_size=5, max_overflow=5, future=True)
+
+
 def make_session_factory(database_url: str) -> sessionmaker[Session]:
-    connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
-    engine = create_engine(database_url, connect_args=connect_args, future=True)
+    engine = make_engine(database_url)
     Base.metadata.create_all(engine)
     return sessionmaker(bind=engine, expire_on_commit=False)
 
