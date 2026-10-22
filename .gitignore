@@ -1,0 +1,17 @@
+# secrets and local state
+.env
+.env.*
+!.env.example
+*.db
+*.sqlite
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/
