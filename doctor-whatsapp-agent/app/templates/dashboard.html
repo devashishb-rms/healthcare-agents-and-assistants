@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Pending drafts <span class="muted">({{ drafts|length }})</span></h1>
+{% if notice %}<div class="card notice">{{ notice }}</div>{% endif %}
+
+<div class="card">
+  <form method="post" action="/console/mode" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
+    <strong>Mode</strong>
+    <span class="muted">auto = admin replies go out, clinical waits for you · draft = nothing goes out without you · off = log only</span>
+    {% for m in ["auto", "draft", "off"] %}
+      <button type="submit" name="mode" value="{{ m }}" {% if m == mode %}class="primary"{% endif %}>{{ m }}</button>
+    {% endfor %}
+  </form>
+</div>
+
+{% if not drafts %}
+<div class="card muted">Nothing waiting for you.</div>
+{% endif %}
+{% for d in drafts %}
+<div class="card draft {% if not d.proposed_reply %}clinical{% endif %}">
+  <div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap">
+    <strong>Draft #{{ d.id }} · <a href="/console/patients/{{ d.patient_wa_id }}">{{ names.get(d.patient_wa_id) or d.patient_wa_id }}</a></strong>
+    <span class="muted">{{ d.created_at|ts }}</span>
+  </div>
+  <p class="muted" style="margin:6px 0 2px">Patient wrote</p>
+  <div class="quote">{{ d.patient_text }}</div>
+  {% if d.note_for_doctor %}<p class="muted" style="margin:8px 0 2px">Assistant's note</p><div class="quote">{{ d.note_for_doctor }}</div>{% endif %}
+  <form method="post" action="/console/drafts/{{ d.id }}" style="margin-top:10px">
+    {% if d.proposed_reply %}
+      <p class="muted" style="margin:0 0 2px">Proposed reply (edit to send your own words)</p>
+    {% else %}
+      <p class="muted" style="margin:0 0 2px">Clinical question: the assistant will not answer. Write your reply, or discard.</p>
+    {% endif %}
+    <textarea name="text" rows="3" placeholder="Your reply to the patient">{{ d.proposed_reply }}</textarea>
+    <p style="margin:8px 0 0; display:flex; gap:8px; flex-wrap:wrap">
+      {% if d.proposed_reply %}<button class="primary" type="submit" name="action" value="approve">Send as proposed</button>{% endif %}
+      <button type="submit" name="action" value="edit" {% if not d.proposed_reply %}class="primary"{% endif %}>Send my text</button>
+      <button class="danger" type="submit" name="action" value="discard">Discard</button>
+    </p>
+  </form>
+</div>
+{% endfor %}
+
+<h2>Emergency pages today <span class="muted">({{ today.isoformat() }}, UTC)</span></h2>
+<div class="card">
+  {% if not emergencies %}<span class="muted">No emergency triggers today.</span>{% else %}
+  <table>
+    <tr><th>Time</th><th>Patient</th><th>Trigger</th><th>Detail</th></tr>
+    {% for e in emergencies %}
+    <tr>
+      <td>{{ e.created_at|ts }}</td>
+      <td><a href="/console/patients/{{ e.patient_wa_id }}">{{ e.patient_wa_id }}</a></td>
+      <td><span class="tag EMERGENCY">{{ "keyword gate" if e.event == "emergency" else "model" }}</span></td>
+      <td>{{ e.detail }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+  <p class="muted" style="margin-bottom:0">The patient always receives the scripted 108/112 reply and you are paged on WhatsApp. Please call them.</p>
+</div>
+
+<h2>Recent patients</h2>
+<div class="card">
+  <table>
+    <tr><th>Patient</th><th>Name</th><th>Consent</th><th>Opted out</th><th>First seen</th></tr>
+    {% for p in patients %}
+    <tr>
+      <td><a href="/console/patients/{{ p.wa_id }}">{{ p.wa_id }}</a></td>
+      <td>{{ p.name or "" }}</td>
+      <td>{{ "yes" if p.consent_at else ("notice sent" if p.consent_sent_at else "no") }}</td>
+      <td>{{ "YES" if p.opted_out else "" }}</td>
+      <td>{{ p.created_at|ts }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

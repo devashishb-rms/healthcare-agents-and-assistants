@@ -1,3 +1,17 @@
+import os
+import tempfile
+
+# app.main builds its settings, DB and clients at import time. Point them at a throwaway SQLite file and a known
+# console token BEFORE anything imports app.main (pytest loads conftest first). No .env is read in tests.
+_TMP = tempfile.mkdtemp(prefix="sevadesk-test-")
+os.environ["DATABASE_URL"] = f"sqlite:///{_TMP}/main.db"
+os.environ["DRY_RUN"] = "true"
+os.environ["CONSOLE_TOKEN"] = "test-console-token"
+os.environ["DOCTOR_CONTROL_NUMBER"] = "919999900000"
+os.environ["WHATSAPP_PHONE_NUMBER_ID"] = ""
+os.environ["WHATSAPP_APP_SECRET"] = ""
+os.environ["ANTHROPIC_API_KEY"] = "test-key-never-used"      # the SDK client is constructed at import; never called in tests
+
 import pytest
 
 from app.agent import AgentContext, AgentResult

@@ -40,6 +40,22 @@ class WhatsAppClient:
         r.raise_for_status()
         return r.json()
 
+    def send_template(self, to: str, template_name: str, language: str, components: list[dict] | None = None) -> dict:
+        """Business-initiated message outside the 24-hour window. The template must be approved by Meta and the
+        recipient must have opted in. `components` follows the Graph API shape, e.g.
+        [{"type": "body", "parameters": [{"type": "text", "text": "Rahul"}, ...]}]."""
+        template = {"name": template_name, "language": {"code": language}}
+        if components:
+            template["components"] = components
+        payload = {"messaging_product": "whatsapp", "recipient_type": "individual", "to": to, "type": "template", "template": template}
+        self.sent.append({"to": to, "template": template_name, "language": language, "components": components or []})
+        if self.dry_run:
+            log.info("[DRY RUN] -> %s: template %s (%s) %s", to, template_name, language, components or [])
+            return {"dry_run": True}
+        r = httpx.post(f"{self._base}/{self.phone_number_id}/messages", headers=self._headers(), json=payload, timeout=20)
+        r.raise_for_status()
+        return r.json()
+
     def mark_read(self, message_id: str) -> None:
         if self.dry_run:
             return

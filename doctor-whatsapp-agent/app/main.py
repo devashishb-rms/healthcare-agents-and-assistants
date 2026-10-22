@@ -1,4 +1,4 @@
-"""FastAPI app: Meta webhook (verify + receive), draft admin endpoints, and a local /simulate endpoint."""
+"""FastAPI app: Meta webhook (verify + receive), draft admin endpoints, the doctor console, and a local /simulate endpoint."""
 from __future__ import annotations
 
 import hashlib
@@ -13,6 +13,7 @@ from sqlalchemy import select
 
 from .agent import ClaudeAgent
 from .config import get_settings
+from .console import install_auth_redirect, make_router as make_console_router
 from .db import Draft, make_session_factory
 from .media import transcribe
 from .orchestrator import Inbound, Orchestrator
@@ -43,6 +44,15 @@ def process(m: Inbound) -> dict:
         return Orchestrator(settings, db, wa, llm, toolbox).handle(m)
 
 
+def _orchestrator(db) -> Orchestrator:
+    """Console actions use the module-level `llm`/`wa` so tests can swap them; the console itself never calls the LLM."""
+    return Orchestrator(settings, db, wa, llm, toolbox)
+
+
+app.include_router(make_console_router(settings, SessionLocal, _orchestrator))
+install_auth_redirect(app)
+
+
 # ---------- Meta webhook ----------
 @app.get("/webhook")
 def verify(hub_mode: str = Query("", alias="hub.mode"), hub_token: str = Query("", alias="hub.verify_token"), hub_challenge: str = Query("", alias="hub.challenge")):
@@ -59,6 +69,31 @@ def _verify_signature(raw: bytes, header: Optional[str]) -> None:
     digest = hmac.new(settings.whatsapp_app_secret.encode(), raw, hashlib.sha256).hexdigest()
     if not hmac.compare_digest(digest, header[7:]):
         raise HTTPException(403, "bad signature")
+
+
+def check_phone_number_id(payload: dict, expected: str) -> None:
+    """Reject payloads addressed to a different WhatsApp number (misrouted WABA webhooks, or a spoofed payload
+    that passed signature verification because the app secret is shared across numbers). No-op when
+    WHATSAPP_PHONE_NUMBER_ID is unset (local dry-run)."""
+    if not expected:
+        return
+    for entry in payload.get("entry", []):
+        for change in entry.get("changes", []):
+            got = (change.get("value", {}).get("metadata") or {}).get("phone_number_id")
+            if got is None:
+                log.warning("webhook change without metadata.phone_number_id (field=%s); allowing", change.get("field"))
+            elif str(got) != expected:
+                log.warning("webhook for phone_number_id %s but we are %s; rejecting", got, expected)
+                raise HTTPException(403, "phone_number_id mismatch")
+
+
+def status_updates(payload: dict) -> list[dict]:
+    """Delivery/read receipts Meta sends under value.statuses. We log them and never process them as messages."""
+    out = []
+    for entry in payload.get("entry", []):
+        for change in entry.get("changes", []):
+            out.extend(change.get("value", {}).get("statuses", []) or [])
+    return out
 
 
 def parse_webhook(payload: dict) -> list[Inbound]:
@@ -109,6 +144,13 @@ async def receive(request: Request, background: BackgroundTasks):
     raw = await request.body()
     _verify_signature(raw, request.headers.get("X-Hub-Signature-256"))
     payload = await request.json()
+    if not isinstance(payload, dict):
+        raise HTTPException(400, "expected a JSON object")
+    check_phone_number_id(payload, settings.whatsapp_phone_number_id)
+    statuses = status_updates(payload)
+    if statuses:
+        log.info("ignoring %d status update(s): %s", len(statuses),
+                 ", ".join(f"{st.get('id', '?')}={st.get('status', '?')}" for st in statuses[:10]))
     for m in parse_webhook(payload):
         wa.mark_read(m.wa_message_id) if not m.is_echo else None
         enrich_media(m)

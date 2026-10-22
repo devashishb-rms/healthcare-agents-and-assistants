@@ -43,8 +43,15 @@ class Settings(BaseSettings):
     backoff_minutes: int = 10                     # stay silent this long after the doctor replies in a thread
     holding_eta_minutes: int = 60                 # fallback ETA quoted to patients when calendar has no info
 
+    # --- Doctor web console (/console) ---
+    console_token: str = ""                       # required to open /console; empty = console disabled
+
+    # --- Appointment reminders (python -m app.reminders) ---
+    reminder_template_name: str = "appointment_reminder"   # Meta-approved utility template name
+    reminder_template_language: str = "en"                 # template language code, e.g. en, en_US, hi
+
     # --- Storage / data ---
-    database_url: str = "sqlite:///./sevadesk.db"
+    database_url: str = "sqlite:///./sevadesk.db"      # or postgresql+psycopg://user:pass@host:5432/sevadesk
     kb_path: str = "data/clinic_kb.json"
     calendar_path: str = "data/calendar.json"
     reports_path: str = "data/reports.json"
