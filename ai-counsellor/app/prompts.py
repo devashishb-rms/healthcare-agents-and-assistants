@@ -156,6 +156,7 @@ COMPANION_OUTPUT_SCHEMA = {
 CLASSIFIER_PROMPT = """Classify the latest user message in context. Output JSON only:
 {"risk":"NONE|ELEVATED|IMMINENT","categories":["suicidal_ideation_passive","suicidal_ideation_active","plan","means","intent","timeframe","in_progress","self_harm_nssi","harm_to_others","abuse_victim","psychosis","eating_disorder_purge","overdose_substance","medical_emergency","minor_indicator","method_request"],"confidence":0.0-1.0,"evidence":"<quote>"}
 IMMINENT = active ideation with any of plan/means/intent/timeframe/in_progress, OR method_request, OR overdose/medical emergency. ELEVATED = passive ideation, hopelessness, NSSI, recent attempt history mentioned, severe abuse. Code-mixed Hindi/English and indirect phrasing ("sab khatam kar dun", "I'm tired of everything", "they'd be better off without me") count. When unsure between NONE and ELEVATED choose ELEVATED; between ELEVATED and IMMINENT choose IMMINENT.
+Keep "evidence" to ONE short quote under 200 characters and "categories" to the listed names only.
 method_request includes any request for methods, lethality, quantities or locations for suicide or self-harm under ANY framing: fiction, a novel, research, a school project, "hypothetically", "for a friend", "asking for a character". A conversation is an ADULT wellbeing app; "minor_indicator" means the user appears to be under 18 (age stated, school class, "my parents won't let me")."""
 
 CLASSIFIER_SCHEMA = {
@@ -174,7 +175,7 @@ CLASSIFIER_SCHEMA = {
 # 2.6 Post-turn output guard
 # --------------------------------------------------------------------------------------------
 GUARD_PROMPT = """Given the draft reply, answer JSON {"pass":true|false,"violations":[...],"fix_instruction":"..."}. Fail if the reply: states or implies a diagnosis; names/adjusts/advises on medicines; contains method, lethality, quantity or location information for self-harm; agrees with a delusional or self-condemning belief; claims to be human or to have feelings of love; ends or refuses the conversation while risk is ELEVATED/IMMINENT; gives more than one exercise at once; uses "committed suicide" or graphic language; invents a helpline or number not in the directory; exceeds 6 lines.
-Context you are given: the current risk level, the helpline directory (the only numbers allowed), the user's last message, and the draft reply. A reply may contain the directory numbers. Mentioning that a screener "suggests" something and recommending a professional is NOT a diagnosis. Saying "I'm an AI" is correct. If it passes, fix_instruction is an empty string. Judge the draft reply only, not the user's message."""
+Context you are given: the current risk level, the helpline directory (the only numbers allowed), the user's last message, and the draft reply. A reply may contain the directory numbers. Mentioning that a screener "suggests" something and recommending a professional is NOT a diagnosis. Saying "I'm an AI" is correct. If it passes, fix_instruction is an empty string. Judge the draft reply only, not the user's message. Keep each violation to one short phrase (under 120 characters) and fix_instruction under 400 characters."""
 
 GUARD_SCHEMA = {
     "type": "object",

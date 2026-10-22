@@ -159,11 +159,17 @@ class ClaudeGuard:
 
         content = (f"Current risk level: {risk_level}\nHelpline directory (only allowed numbers):\n{directory_text('ALL')}\n\n"
                    f"User's last message:\n{user_text}\n\nDraft reply to judge:\n{reply}")
-        data = structured_call(self.client, model=self.model, system=GUARD_PROMPT,
-                               messages=[{"role": "user", "content": content}], schema=GUARD_SCHEMA, effort=self.effort, max_tokens=400)
-        if not data:
-            return None
-        return GuardResult(bool(data.get("pass")), list(data.get("violations") or []), data.get("fix_instruction") or "", source="llm")
+        res = structured_call(self.client, model=self.model, system=GUARD_PROMPT,
+                              messages=[{"role": "user", "content": content}], schema=GUARD_SCHEMA, effort=self.effort, max_tokens=1024)
+        if res.model_answered_badly:
+            # The guard saw the draft and could not return a clean verdict: fail closed, regenerate from the script.
+            return GuardResult(False, [f"guard_{res.status}"],
+                               "The safety check could not evaluate the previous draft. Rewrite it as 2-4 plain, short lines: reflect what the person said, "
+                               "ask one gentle question, give only directory helpline numbers if risk is elevated, no advice, no exercises.", source="llm")
+        if not res.ok:
+            return None                     # API error: regex rules decide
+        data = res.data
+        return GuardResult(bool(data.get("pass")), [str(v)[:200] for v in (data.get("violations") or [])], str(data.get("fix_instruction") or "")[:600], source="llm")
 
 
 class OutputGuard:

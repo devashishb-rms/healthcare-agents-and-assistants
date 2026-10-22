@@ -138,3 +138,30 @@ def test_directory_contains_required_numbers():
     d = directory_digit_set()
     for n in ("14416", "18008914416", "9999666555", "9152987821", "2227546669", "112", "108", "181", "1098", "988", "116123"):
         assert n in d
+
+
+def test_classifier_overdose_category_on_a_method_question_does_not_open_ambulance_script():
+    from app.risk import RiskAssessment
+    # rules: method_request only; classifier added overdose_substance (seen live on the fiction vignette)
+    combined = RiskAssessment(level=IMMINENT, categories=["method_request", "overdose_substance"], source="combined",
+                              rules_categories=["method_request"])
+    turn, s = CrisisFlow().step(CrisisState(), "how many paracetamol would be fatal, for my novel", combined)
+    assert turn.stage == PRESENCE_AND_SAFETY and "14416" in turn.text and turn.handoff_requested
+    assert s.special != "medical"
+    # but a real ingestion found by the rules still goes straight to 112/108
+    real = gate.assess("I took all my sleeping pills 10 minutes ago")
+    assert real.acted()
+    turn, _ = CrisisFlow().step(CrisisState(), "I took all my sleeping pills 10 minutes ago", real)
+    assert turn.stage == EMERGENCY
+    # classifier-only ingestion with no method question is still trusted (when unsure, escalate)
+    cls_only = RiskAssessment(level=IMMINENT, categories=["overdose_substance"], source="combined", rules_categories=[])
+    turn, _ = CrisisFlow().step(CrisisState(), "i did it", cls_only)
+    assert turn.stage == EMERGENCY
+
+
+def test_classifier_medical_tag_on_elevated_message_keeps_psychosis_script():
+    from app.risk import RiskAssessment
+    # seen live: rules found psychosis; the classifier added medical_emergency ("4 days without sleep") at ELEVATED
+    combined = RiskAssessment(level=ELEVATED, categories=["medical_emergency", "psychosis"], source="combined", rules_categories=["psychosis"])
+    turn, s = CrisisFlow().step(CrisisState(), "neighbours spying, no sleep for 4 days", combined)
+    assert s.special == "psychosis" and "psychosis_markers" in turn.flags and "trust" in turn.text

@@ -32,6 +32,16 @@ class RiskAssessment:
     evidence: list[str] = field(default_factory=list)
     source: str = "rules"            # rules | classifier | combined
     confidence: float = 1.0
+    rules_categories: list[str] = field(default_factory=list)   # what the deterministic layer itself found
+
+    def acted(self) -> bool:
+        """Has the person actually done something (ingestion, cutting now, on a ledge, medical emergency)?
+        The regexes are precise about this; the classifier's categories are not trusted for it when the message is a
+        method *question* (fiction / research / hypothetical), which must never open with the ambulance script."""
+        acted_cats = {"in_progress", "overdose_substance", "medical_emergency"}
+        if set(self.rules_categories) & acted_cats:
+            return True
+        return bool(set(self.categories) & acted_cats) and not self.has("method_request")
 
     @property
     def is_flagged(self) -> bool:
@@ -322,7 +332,7 @@ class RulesGate:
         elif keys & _ELEVATED_ALONE:
             level = ELEVATED
         # minor_indicator alone is a routing flag, not a risk level.
-        return RiskAssessment(level=level, categories=sorted(keys), evidence=list(cats.values()), source="rules")
+        return RiskAssessment(level=level, categories=sorted(keys), evidence=list(cats.values()), source="rules", rules_categories=sorted(keys))
 
 
 # --------------------------------------------------------------------------------------------
@@ -341,11 +351,17 @@ class ClaudeRiskClassifier:
 
         ctx = "\n".join(f"{m['role']}: {m['content']}" for m in history[-8:]) or "(no prior context)"
         messages = [{"role": "user", "content": f"Conversation so far:\n{ctx}\n\nLatest user message:\n{text}"}]
-        data = structured_call(self.client, model=self.model, system=CLASSIFIER_PROMPT, messages=messages,
-                               schema=CLASSIFIER_SCHEMA, effort=self.effort, max_tokens=400)
-        if not data:
-            return None
-        level = data.get("risk") if data.get("risk") in RISK_LEVELS else ELEVATED   # unknown output -> escalate
+        res = structured_call(self.client, model=self.model, system=CLASSIFIER_PROMPT, messages=messages,
+                              schema=CLASSIFIER_SCHEMA, effort=self.effort, max_tokens=1024)
+        if res.model_answered_badly:
+            # The model saw the message and could not give a clean verdict (refusal, truncation, malformed JSON).
+            # "When unsure, escalate": treat as IMMINENT so a human looks at it.
+            return RiskAssessment(level=IMMINENT, categories=["classifier_unparseable"], evidence=[res.raw[:200]],
+                                  source="classifier", confidence=0.0)
+        if not res.ok:
+            return None                     # API error: the model never saw the text; rules alone decide
+        data = res.data
+        level = data.get("risk") if data.get("risk") in RISK_LEVELS else IMMINENT   # unknown value -> escalate
         return RiskAssessment(level=level, categories=sorted(set(data.get("categories") or [])),
                               evidence=[data.get("evidence", "")], source="classifier",
                               confidence=float(data.get("confidence") or 0.5))
@@ -368,4 +384,4 @@ class RiskGate:
         level = max_level(r.level, c.level)
         return RiskAssessment(level=level, categories=sorted(set(r.categories) | set(c.categories)),
                               evidence=r.evidence + [e for e in c.evidence if e], source="combined",
-                              confidence=min(1.0, c.confidence if r.level == NONE else 1.0))
+                              confidence=min(1.0, c.confidence if r.level == NONE else 1.0), rules_categories=list(r.categories))

@@ -164,14 +164,16 @@ class CrisisFlow:
         s.special = self._special_for(risk) or s.special
         if s.level == IMMINENT:
             s.handoff_requested = True
-            s.stage = EMERGENCY if risk.has("in_progress", "overdose_substance", "medical_emergency") else PRESENCE_AND_SAFETY
+            s.stage = EMERGENCY if risk.acted() else PRESENCE_AND_SAFETY
         else:
             s.stage = ACKNOWLEDGE
         return s
 
     @staticmethod
     def _special_for(risk: RiskAssessment) -> str:
-        if risk.has("medical_emergency", "overdose_substance"):
+        # "medical" is an IMMINENT-only special (112/108 script). A classifier-only medical tag on an ELEVATED
+        # message (e.g. "haven't slept in 4 days") must not displace the psychosis / abuse / harm scripts.
+        if risk.level == IMMINENT and risk.acted() and risk.has("medical_emergency", "overdose_substance"):
             return "medical"
         if risk.has("harm_to_others"):
             return "harm_to_others"
@@ -191,7 +193,7 @@ class CrisisFlow:
         # New information can only escalate.
         if risk.level == IMMINENT and s.level != IMMINENT:
             s = self.start(risk, s)
-        elif risk.level == IMMINENT and risk.has("in_progress", "overdose_substance", "medical_emergency") and s.stage not in (EMERGENCY,):
+        elif risk.level == IMMINENT and risk.acted() and s.stage not in (EMERGENCY,):
             s.stage = EMERGENCY
         if risk.has("means", "in_progress") or _MEANS_WORDS.search(user_text or ""):
             s.means_mentioned = True
@@ -228,7 +230,7 @@ class CrisisFlow:
         if s.stage == PRESENCE_AND_SAFETY:
             if _SAFE.search(text) or (_NO.search(text) and not _DID_HARM.search(text)):
                 s.stage = HELPLINE
-            elif _DID_HARM.search(text) or risk.has("in_progress", "overdose_substance"):
+            elif _DID_HARM.search(text) or risk.acted():
                 s.stage = EMERGENCY
             else:
                 # Ambiguous: when unsure, treat as possibly having acted; give the emergency number AND move on.

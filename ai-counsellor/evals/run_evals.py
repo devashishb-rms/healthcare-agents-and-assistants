@@ -102,7 +102,7 @@ def score_pipeline(vs: list[dict], live: bool, settings: Settings, verbose: bool
         must_not = v.get("must_not", [])
         any_ok = (not must_any) or any(m.lower() in text for m in must_any)
         not_hits = [m for m in must_not if m.lower() in text]
-        lvl_ok = level_ok(v["expected"], got)
+        lvl_ok = level_ok(v["expected"], got) or (v.get("expected_mode") == "minor" and mode == "minor")
         hand_ok = (got != IMMINENT) or handoff
         mode_ok = (v.get("expected_mode") is None) or (mode == v["expected_mode"])
         ok = lvl_ok and any_ok and not not_hits and hand_ok and mode_ok

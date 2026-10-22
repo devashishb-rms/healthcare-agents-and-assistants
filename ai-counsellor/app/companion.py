@@ -52,12 +52,12 @@ class ClaudeCompanionLLM:
     def respond(self, system: str, messages: list[dict]) -> CompanionOutput | None:
         from .llm import structured_call
 
-        data = structured_call(self.client, model=self.model, system=system, messages=messages,
-                               schema=COMPANION_OUTPUT_SCHEMA, effort=self.effort, max_tokens=1024)
-        if not data:
-            return None
+        res = structured_call(self.client, model=self.model, system=system, messages=messages,
+                              schema=COMPANION_OUTPUT_SCHEMA, effort=self.effort, max_tokens=1500)
+        if not res.ok:
+            return None                     # orchestrator sends the scripted safe fallback
         try:
-            return CompanionOutput.model_validate(data)
+            return CompanionOutput.model_validate(res.data)
         except ValidationError as e:
             log.error("bad companion JSON: %s", e)
             return None
@@ -66,9 +66,9 @@ class ClaudeCompanionLLM:
         from .llm import structured_call
 
         system = render(CRISIS_WORDING_PROMPT, script=script, instruction=instruction)
-        data = structured_call(self.client, model=self.model, system=system, messages=messages or [{"role": "user", "content": "(start)"}],
-                               schema=CRISIS_WORDING_SCHEMA, effort=self.effort, max_tokens=400)
-        return (data or {}).get("reply") or None
+        res = structured_call(self.client, model=self.model, system=system, messages=messages or [{"role": "user", "content": "(start)"}],
+                              schema=CRISIS_WORDING_SCHEMA, effort=self.effort, max_tokens=800)
+        return (res.data or {}).get("reply") if res.ok else None   # None -> the script is sent verbatim
 
 
 # --------------------------------------------------------------------------------------------

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass, field
 from typing import Any
 
 import anthropic
@@ -17,6 +18,25 @@ def make_client(settings: Settings) -> anthropic.Anthropic:
     return anthropic.Anthropic(api_key=settings.anthropic_api_key or None, default_headers=headers)
 
 
+@dataclass
+class LLMResult:
+    """status: ok | refusal | truncated | bad_json | api_error. Only `ok` carries data."""
+    status: str
+    data: dict[str, Any] | None = None
+    raw: str = ""
+    detail: str = ""
+
+    @property
+    def ok(self) -> bool:
+        return self.status == "ok"
+
+    @property
+    def model_answered_badly(self) -> bool:
+        """The model produced *something* we could not use. Safety callers treat this as 'unsure' and escalate.
+        An API error is different: the model never saw the text, so the deterministic rules alone decide."""
+        return self.status in ("refusal", "truncated", "bad_json")
+
+
 def structured_call(
     client: anthropic.Anthropic,
     *,
@@ -26,11 +46,8 @@ def structured_call(
     schema: dict,
     effort: str = "low",
     max_tokens: int = 1024,
-) -> dict[str, Any] | None:
-    """One JSON-schema-constrained call. Returns the parsed dict, or None on refusal / malformed output.
-
-    Callers treat None as "unknown" and fall back to their deterministic path.
-    """
+) -> LLMResult:
+    """One JSON-schema-constrained call."""
     try:
         resp = client.messages.create(
             model=model,
@@ -41,13 +58,19 @@ def structured_call(
         )
     except anthropic.APIError as e:  # network/auth/rate-limit: never crash the safety path
         log.error("anthropic API error (%s): %s", model, e)
-        return None
+        return LLMResult("api_error", detail=str(e))
     if resp.stop_reason == "refusal":
         log.warning("model %s refused", model)
-        return None
+        return LLMResult("refusal")
     text = next((b.text for b in resp.content if b.type == "text"), "")
+    if resp.stop_reason == "max_tokens":
+        log.error("output from %s truncated at max_tokens=%d: %s", model, max_tokens, text[:200])
+        return LLMResult("truncated", raw=text)
     try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        log.error("bad JSON from %s: %s", model, text[:200])
-        return None
+        data = json.loads(text)
+    except json.JSONDecodeError as e:
+        log.error("bad JSON from %s (%s): %s", model, e, text[:200])
+        return LLMResult("bad_json", raw=text, detail=str(e))
+    if not isinstance(data, dict):
+        return LLMResult("bad_json", raw=text, detail="not an object")
+    return LLMResult("ok", data=data, raw=text)
