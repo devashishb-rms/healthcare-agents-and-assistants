@@ -1,0 +1,5 @@
+anthropic==1.15.0
+pydantic>=2.11
+pydantic-settings>=2.10
+sqlalchemy>=2.0
+pytest>=8

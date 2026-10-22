@@ -1,0 +1,8 @@
+.venv/
+.env
+__pycache__/
+*.pyc
+*.db
+.pytest_cache/
+evals/live_results.json
+evals/live_run.log
